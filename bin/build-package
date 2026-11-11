@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+if [ "$#" -ne 0 ]; then
+  echo "Usage: bin/build-package (builds only; no installation flags accepted)" >&2
+  exit 2
+fi
+cd -- "$(dirname -- "$0")/../pkgbuild"
+exec makepkg -f

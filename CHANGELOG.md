@@ -1,0 +1,16 @@
+# Changelog
+
+## 0.1.1 - 2026-11-11
+
+- Published the initial unofficial public preview with a versioned GitHub release.
+- Added an optional Arch package recipe that installs setup files without modifying any user's configuration.
+- Neutralized and bounded dynamic tooltip text according to Omarchy plugin UI safety guidance.
+- Added public installation instructions, CI, contribution guidance, and package-build checks.
+
+## 0.1.0 - 2026-11-11
+
+- Extracted the single-display virtual-output / physical-mirror implementation into a preview.
+- Detected physical connector, dimensions, refresh rate, scale, and position.
+- Added generic icon/tooltip, per-user staging, explicit activation, guarded physical test, and opt-in automatic mode.
+- Added journal epoch checks, retained physical state on controller errors, backup manifests, resumable uninstall, and recovery documentation.
+- Limited support to one ordinary unrotated SDR output on the Lua/Quickshell Omarchy stack.

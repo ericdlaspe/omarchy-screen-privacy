@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""Build a source-only release asset with no local metadata or generated files."""
+from pathlib import Path
+import hashlib
+import re
+import tarfile
+
+root=Path(__file__).resolve().parents[1]
+version=re.search(r"^VERSION = '([^']+)'",(root/'privacy.py').read_text(),re.M)[1]
+name='omarchy-screen-privacy-'+version
+out=root/'dist';out.mkdir(exist_ok=True)
+archive=out/(name+'.tar.gz')
+files=('privacy.py','installer.py','install','README.md','TESTING.md','CHANGELOG.md','LICENSE','CONTRIBUTING.md','tests/test_privacy.py')
+with tarfile.open(archive,'w:gz',format=tarfile.USTAR_FORMAT) as bundle:
+    for relative in files:
+        file=root/relative
+        info=bundle.gettarinfo(str(file),arcname=name+'/'+relative)
+        info.uid=info.gid=0
+        info.uname=info.gname=''
+        info.pax_headers={}
+        with file.open('rb') as stream:bundle.addfile(info,stream)
+checksum=hashlib.sha256(archive.read_bytes()).hexdigest()
+(out/(archive.name+'.sha256')).write_text(checksum+'  '+archive.name+'\n')
+print(archive)
+print(checksum)
