@@ -1,6 +1,6 @@
 # Omarchy Screen Privacy
 
-**Version 0.1.1 · experimental preview · unofficial**
+**Version 0.1.2 · experimental preview · unofficial**
 
 Keep the physical screen dark while Sunshine streams a virtual Hyprland desktop. A crossed-out monitor button toggles the physical screen; right-click restores it. Automatic mode follows observed Sunshine connection/disconnection events.
 
@@ -44,22 +44,22 @@ Clone the public repository and select the published preview tag:
 ```sh
 git clone https://github.com/ericdlaspe/omarchy-screen-privacy.git
 cd omarchy-screen-privacy
-git checkout v0.1.1
+git checkout v0.1.2
 ./install --dry-run
 ./install
 ```
 
 Continue with **Activate and verify** below. The installer intentionally refuses unsupported systems rather than guessing.
 
-Alternatively, download the versioned source archive and checksum from the [GitHub release](https://github.com/ericdlaspe/omarchy-screen-privacy/releases/tag/v0.1.1).
+Alternatively, download the versioned source archive and checksum from the [GitHub release](https://github.com/ericdlaspe/omarchy-screen-privacy/releases/tag/v0.1.2).
 
 ### Install from the source archive
 
 Review the source before running it. Use your ordinary desktop account, **not sudo**, from the active Omarchy session.
 
 ```sh
-tar -xzf omarchy-screen-privacy-0.1.1.tar.gz
-cd omarchy-screen-privacy-0.1.1
+tar -xzf omarchy-screen-privacy-0.1.2.tar.gz
+cd omarchy-screen-privacy-0.1.2
 ./install --dry-run
 ./install
 ```

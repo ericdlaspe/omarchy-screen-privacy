@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 - 2026-11-11
+
+- Included the CI runner fix in the released tag: Ubuntu 22.04 supports the Python 3.9/3.13 test matrix.
+- Updated installation links, source archive, and Arch package checksums for the new preview.
+- No change to display-control behavior or the experimental compatibility scope.
+
 ## 0.1.1 - 2026-11-11
 
 - Published the initial unofficial public preview with a versioned GitHub release.

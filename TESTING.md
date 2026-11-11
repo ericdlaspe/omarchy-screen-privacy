@@ -1,6 +1,6 @@
 # Verification record
 
-Date: 2026-11-11. Release: 0.1.1 experimental preview.
+Date: 2026-11-11. Release: 0.1.2 experimental preview.
 
 ## Passed
 

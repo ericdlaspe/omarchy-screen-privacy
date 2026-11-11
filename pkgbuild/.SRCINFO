@@ -1,6 +1,6 @@
 pkgbase = omarchy-screen-privacy
 	pkgdesc = Experimental physical-screen control for Sunshine on compatible single-display Omarchy systems
-	pkgver = 0.1.1
+	pkgver = 0.1.2
 	pkgrel = 1
 	url = https://github.com/ericdlaspe/omarchy-screen-privacy
 	arch = any
@@ -10,7 +10,7 @@ pkgbase = omarchy-screen-privacy
 	depends = sunshine
 	depends = systemd
 	depends = omarchy
-	source = omarchy-screen-privacy-0.1.1.tar.gz::https://github.com/ericdlaspe/omarchy-screen-privacy/releases/download/v0.1.1/omarchy-screen-privacy-0.1.1.tar.gz
-	sha256sums = f824814b9a13b7b066af1981aaf4f10bdc97c4eabaeeb540f5d7dca5075172f5
+	source = omarchy-screen-privacy-0.1.2.tar.gz::https://github.com/ericdlaspe/omarchy-screen-privacy/releases/download/v0.1.2/omarchy-screen-privacy-0.1.2.tar.gz
+	sha256sums = 226164479c4c4151a3cd3cb3bd8fea9fe63c0d26dc2687119f783e48fad5b7cd
 
 pkgname = omarchy-screen-privacy

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Omarchy Screen Privacy 0.1.1. See README.md for the limited support contract."""
+"""Omarchy Screen Privacy 0.1.2. See README.md for the limited support contract."""
 import argparse
 import contextlib
 import fcntl
@@ -15,7 +15,7 @@ import time
 import uuid
 
 NAME = 'omarchy-screen-privacy'
-VERSION = '0.1.1'
+VERSION = '0.1.2'
 UNIT = NAME + '.service'
 VIRTUAL = 'HEADLESS-9'
 ICON = '\U000f0d90'
