@@ -1,6 +1,6 @@
 # Omarchy Screen Privacy
 
-**Version 0.1.2 · experimental preview · unofficial**
+**Version 0.1.3 · experimental preview · unofficial**
 
 Keep the physical screen dark while Sunshine streams a virtual Hyprland desktop. A crossed-out monitor button toggles the physical screen; right-click restores it. Automatic mode follows observed Sunshine connection/disconnection events.
 
@@ -44,22 +44,22 @@ Clone the public repository and select the published preview tag:
 ```sh
 git clone https://github.com/ericdlaspe/omarchy-screen-privacy.git
 cd omarchy-screen-privacy
-git checkout v0.1.2
+git checkout v0.1.3
 ./install --dry-run
 ./install
 ```
 
 Continue with **Activate and verify** below. The installer intentionally refuses unsupported systems rather than guessing.
 
-Alternatively, download the versioned source archive and checksum from the [GitHub release](https://github.com/ericdlaspe/omarchy-screen-privacy/releases/tag/v0.1.2).
+Alternatively, download the versioned source archive and checksum from the [GitHub release](https://github.com/ericdlaspe/omarchy-screen-privacy/releases/tag/v0.1.3).
 
 ### Install from the source archive
 
 Review the source before running it. Use your ordinary desktop account, **not sudo**, from the active Omarchy session.
 
 ```sh
-tar -xzf omarchy-screen-privacy-0.1.2.tar.gz
-cd omarchy-screen-privacy-0.1.2
+tar -xzf omarchy-screen-privacy-0.1.3.tar.gz
+cd omarchy-screen-privacy-0.1.3
 ./install --dry-run
 ./install
 ```
@@ -94,9 +94,25 @@ Only after that physical check succeeds:
 
 This deliberately disconnects and restarts Sunshine once to establish known session tracking. Reconnect and verify automatic blackout; disconnect and verify local restoration. Test after reboot/login and after relevant Omarchy, Hyprland, Sunshine, or driver updates before relying on the feature.
 
+## Idle power and upgrading
+
+Version 0.1.3 fixes a bug in 0.1.0–0.1.2 that could repeatedly wake the physical display after the desktop's idle timer blanked it. Update older installations before leaving automatic mode running overnight.
+
+When the physical display is visible, normal Omarchy idle blanking and keyboard/mouse wake remain in charge. A manual “on” is a one-time wake, not a keep-awake setting. While privacy hides the physical output, the controller keeps the virtual capture output awake. If the display was idle before or during privacy mode, automatic restoration leaves it idle instead of keeping it lit. Lock and system-sleep settings are not changed.
+
+If you deliberately show the physical screen during a stream, normal idle blanking applies to both outputs. Capture behavior while idle depends on the compositor and driver. Test connecting Moonlight from an already-idle desktop on your machine, as well as local keyboard wake afterward. Restoring a disabled output can briefly light it during the transition; keep the session locked when privacy matters.
+
+There is no in-place upgrade command in this preview. Save your work, keep a keyboard or SSH fallback available, and uninstall the old per-user installation first:
+
+```sh
+~/.local/bin/screen-privacy uninstall --yes
+```
+
+This disconnects Sunshine and restores the original layout. If uninstall reports changed managed files, resolve those conflicts using the instructions below rather than overwriting them. Then install this release and repeat **Activate and verify**, including the idle/reconnect check. Updating the optional system package alone does not update an existing per-user installation.
+
 ## Controls
 
-- **Crossed-out monitor button:** toggle the physical display. Highlighted means the output is reported disabled; it is not independent proof of physical privacy.
+- **Crossed-out monitor button:** toggle the physical display. Highlighted means the output is reported disabled or asleep; it is not independent proof of physical privacy.
 - **Right-click button:** restore the physical screen.
 - **Super+Ctrl+Shift+F12:** restore the physical screen, including while locked.
 - `screen-privacy off` / `on`: explicitly hide/reveal the physical screen.

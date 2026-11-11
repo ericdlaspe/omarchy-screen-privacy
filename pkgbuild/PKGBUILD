@@ -1,6 +1,6 @@
 # Unofficial per-user setup package. No install hook changes desktop configuration.
 pkgname=omarchy-screen-privacy
-pkgver=0.1.2
+pkgver=0.1.3
 pkgrel=1
 pkgdesc='Experimental physical-screen control for Sunshine on compatible single-display Omarchy systems'
 arch=('any')
@@ -8,7 +8,7 @@ url='https://github.com/ericdlaspe/omarchy-screen-privacy'
 license=('MIT')
 depends=('python' 'hyprland' 'sunshine' 'systemd' 'omarchy')
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
-sha256sums=('226164479c4c4151a3cd3cb3bd8fea9fe63c0d26dc2687119f783e48fad5b7cd')
+sha256sums=('a3ccc7f50752f30e12ddc39023a938a482262bb77a617d828b2bb66d653a7bca')
 
 check() {
   cd "$srcdir/$pkgname-$pkgver"

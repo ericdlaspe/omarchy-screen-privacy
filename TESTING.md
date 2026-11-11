@@ -1,10 +1,10 @@
 # Verification record
 
-Date: 2026-11-11. Release: 0.1.2 experimental preview.
+Date: 2026-11-11. Release: 0.1.3 experimental preview.
 
 ## Passed
 
-- 66 Python unittest cases on macOS and an Omarchy Linux host. Some inherited fixture checks deliberately run in more than one lifecycle context.
+- 96 Python unittest cases on macOS and an Omarchy Linux host. Some inherited fixture checks deliberately run in more than one lifecycle context.
 - DP, HDMI, and eDP connector fixtures; 1080p, 1440p, ultrawide, and 4K modes; fractional/HiDPI scales and negative positions.
 - Explicit refusal of extra/headless outputs, disabled setup display, rotation, VRR, HDR/10-bit, mirror conflicts, malformed identifiers, and invalid mode bounds.
 - Physical-off prerequisite, generic icon/status, session-scoped overrides, topology-change pause, and targeted recovery.
@@ -18,6 +18,14 @@ Date: 2026-11-11. Release: 0.1.2 experimental preview.
 - Generated systemd user unit accepted by `systemd-analyze --user verify` on the Linux host.
 - Generated Lua monitor and binding files compile under the running Hyprland Lua interpreter without executing those display changes.
 - Dynamic tooltip text is bounded, strips control characters, and neutralizes rich-text markers.
+
+## Idle-power regression checks in 0.1.3
+
+- Regression fixtures cover repeated visible polls, idle before/during privacy, disconnect coinciding with idle, setup while idle, explicit one-time wake, session-scoped restore state, keyboard wake, mirror-selector global fallback, and hotplug refusal.
+- On the existing reference deployment, the shared controller was checked with bounded, independently restored DPMS tests. Both outputs remained asleep across three watcher polls; three virtual-output screencopy frames were obtained while asleep. Keyboard wake, privacy from idle, virtual capture while hidden, idle-preserving restoration, subsequent keyboard wake, and explicit off/on recovery passed.
+- Sunshine was not restarted during those reference tests. Existing lock and no-automatic-system-sleep settings were retained.
+- This is not a fresh Moonlight connection test from an idle desktop or an overnight endurance test. Those remain to be verified by a person with access to the client and physical panel.
+- Targeted DPMS is refused for mirrored/unresolved output selectors because the tested Hyprland version otherwise falls back to a global operation. Topology validation and dispatch are not atomic; concurrent hotplug remains unsupported.
 
 ## Not tested / not promised
 

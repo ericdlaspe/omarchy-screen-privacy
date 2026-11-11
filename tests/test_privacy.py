@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -59,17 +60,44 @@ class FakeDisplay:
         if physical:self.outputs.append(dict(BASE,mirrorOf='1' if virtual else 'none'))
         if virtual:self.outputs.append(dict(BASE,name=p.VIRTUAL,id=1,mirrorOf='none'))
         self.calls=[]
+        self.input_wake_armed=False
     def __call__(self,args,**kwargs):
         self.calls.append(args)
         if args[1:4]==['monitors','all','-j']:return result(json.dumps(self.outputs))
+        if args[1:3]==['monitors','-j']:return result(json.dumps([m for m in self.outputs if not m['disabled'] and m['mirrorOf']=='none']))
+        if args[:4]==['hyprctl','output','create','headless']:
+            self.outputs.append(dict(BASE,name=args[4],id=1,mirrorOf='none'))
+            return result('ok')
         if args[0]=='hyprctl' and args[1]=='eval':
             code=args[2]
-            if 'output="DP-2"' in code:
-                monitor=next(m for m in self.outputs if m['name']=='DP-2')
-                monitor['disabled']='disabled=true' in code
-                monitor['mirrorOf']='1' if 'mirror="HEADLESS-9"' in code else 'none'
+            if 'hl.monitor(' in code:
+                name=re.search(r'output="([^"\n]+)"',code)[1]
+                monitor=next(m for m in self.outputs if m['name']==name)
+                if name=='DP-2':
+                    was_disabled=monitor['disabled']
+                    monitor['disabled']='disabled=true' in code
+                    monitor['mirrorOf']='1' if 'mirror="HEADLESS-9"' in code else 'none'
+                    # Enabling/modesetting may wake a panel even without DPMS-on.
+                    if not monitor['disabled'] and getattr(self,'mode_wakes_panel',True):monitor['dpmsStatus']=True
+                else:
+                    monitor['dpmsStatus']=True
+            if 'hl.dsp.dpms(' in code:
+                name=re.search(r'monitor="([^"\n]+)"',code)
+                enabled='action="enable"' in code
+                # Real Hyprland silently falls back to global for a mirror or
+                # missing selector. Catch regressions against that behavior.
+                if name and not any(m['name']==name[1] and not m['disabled'] and m['mirrorOf']=='none' for m in self.outputs):name=None
+                for monitor in self.outputs:
+                    if not monitor['disabled'] and (name is None or monitor['name']==name[1]):
+                        monitor['dpmsStatus']=enabled
+                        self.input_wake_armed=not enabled
             return result('ok\n')
         raise AssertionError(args)
+    def user_input(self):
+        if self.input_wake_armed:
+            for monitor in self.outputs:
+                if not monitor['disabled']:monitor['dpmsStatus']=True
+            self.input_wake_armed=False
 
 
 class ControllerTests(unittest.TestCase):
@@ -115,6 +143,107 @@ class ControllerTests(unittest.TestCase):
     def test_paused_warning(self):
         p.atomic(self.c.runtime/(p.NAME+'.health.json'),json.dumps(dict(session=self.c.session,error='test error')))
         self.assertIn('AUTOMATIC CONTROL PAUSED',self.c.status()['tooltip'])
+
+
+class IdlePowerTests(ControllerTests):
+    def panel(self):return next(m for m in self.fake.outputs if m['name']=='DP-2')
+    def virtual(self):return next(m for m in self.fake.outputs if m['name']==p.VIRTUAL)
+    def sleep_all(self):
+        for monitor in self.fake.outputs:
+            if not monitor['disabled']:monitor['dpmsStatus']=False
+        self.fake.input_wake_armed=True
+    def test_repeated_visible_polls_respect_idle(self):
+        self.panel()['dpmsStatus']=False
+        for _ in range(5):self.c.screen(True)
+        self.assertFalse(self.panel()['dpmsStatus'])
+        self.assertFalse(any('dpms(' in a[-1] for a in self.fake.calls))
+    def test_visible_idle_leaves_both_asleep_and_preserves_local_wake(self):
+        self.sleep_all();self.c.screen(True)
+        self.assertFalse(self.panel()['dpmsStatus']);self.assertFalse(self.virtual()['dpmsStatus'])
+        self.assertTrue(self.fake.input_wake_armed)
+        self.fake.user_input();self.assertTrue(self.panel()['dpmsStatus'])
+    def test_visible_override_is_not_keep_awake(self):
+        self.c.set_override(True);self.sleep_all()
+        for _ in range(4):self.c.screen(self.c.override())
+        self.assertFalse(self.panel()['dpmsStatus'])
+    def test_idle_connect_disconnect_preserves_idle(self):
+        self.sleep_all();self.c.screen(False)
+        self.assertTrue(self.panel()['disabled']);self.assertTrue(self.virtual()['dpmsStatus'])
+        self.c.screen(True)
+        self.assertFalse(self.panel()['disabled']);self.assertFalse(self.panel()['dpmsStatus'])
+    def test_idle_during_stream_preserved_on_disconnect(self):
+        self.c.screen(False);self.virtual()['dpmsStatus']=False;self.c.screen(False)
+        self.assertTrue(self.virtual()['dpmsStatus']);self.c.screen(True)
+        self.assertFalse(self.panel()['dpmsStatus'])
+    def test_idle_coinciding_with_last_disconnect_stays_off(self):
+        self.c.screen(False);self.virtual()['dpmsStatus']=False
+        self.c.screen(True)
+        self.assertFalse(self.panel()['dpmsStatus']);self.assertFalse(self.virtual()['dpmsStatus'])
+    def test_setup_preserves_idle_during_hidden_stream(self):
+        self.c.screen(False);self.virtual()['dpmsStatus']=False
+        self.c.setup();self.c.screen(True)
+        self.assertFalse(self.panel()['dpmsStatus']);self.assertFalse(self.virtual()['dpmsStatus'])
+    def test_setup_existing_virtual_keeps_idle(self):
+        self.sleep_all();self.c.setup()
+        self.assertFalse(self.panel()['dpmsStatus'])
+        self.assertTrue(self.fake.input_wake_armed)
+    def test_setup_new_virtual_keeps_idle(self):
+        self.fake.outputs=self.fake.outputs[:1];self.panel()['mirrorOf']='none';self.panel()['dpmsStatus']=False
+        self.c.setup()
+        self.assertFalse(self.panel()['dpmsStatus']);self.assertFalse(self.virtual()['dpmsStatus'])
+    def test_explicit_restore_is_one_shot(self):
+        self.sleep_all();self.c.screen(True,wake=True)
+        self.assertTrue(self.panel()['dpmsStatus'])
+        self.sleep_all();self.c.screen(True)
+        self.assertFalse(self.panel()['dpmsStatus'])
+    def test_recovery_does_not_wake_unrelated_display(self):
+        self.fake.outputs.append(dict(BASE,name='HDMI-A-1',dpmsStatus=False))
+        self.sleep_all();self.c.recover_direct()
+        self.assertTrue(self.panel()['dpmsStatus']);self.assertFalse(self.virtual()['dpmsStatus'])
+        self.assertFalse(self.fake.outputs[-1]['dpmsStatus'])
+        self.assertTrue(all('monitor=' in a[-1] for a in self.fake.calls if 'dpms(' in a[-1]))
+    def test_restore_rearms_wake_when_modeset_keeps_panel_asleep(self):
+        self.fake.mode_wakes_panel=False
+        self.sleep_all();self.c.screen(False);self.c.screen(True)
+        self.assertFalse(self.panel()['dpmsStatus']);self.assertFalse(self.virtual()['dpmsStatus'])
+        self.assertTrue(self.fake.input_wake_armed)
+        self.fake.user_input();self.assertTrue(self.panel()['dpmsStatus'])
+    def test_mirror_targeting_refused_before_dispatch(self):
+        with self.assertRaisesRegex(RuntimeError,'not eligible'):self.c.power('DP-2',False)
+        self.assertFalse(any('dpms(' in a[-1] for a in self.fake.calls))
+    def test_unknown_targeting_refused_before_dispatch(self):
+        with self.assertRaisesRegex(RuntimeError,'not eligible'):self.c.power('missing',False)
+        self.assertFalse(any('dpms(' in a[-1] for a in self.fake.calls))
+    def test_global_power_refuses_hotplug(self):
+        self.fake.outputs.append(dict(BASE,name='HDMI-A-1'))
+        with self.assertRaises(RuntimeError):self.c.power_all(False)
+        self.assertFalse(any('dpms(' in a[-1] for a in self.fake.calls))
+    def test_hidden_is_verified_before_virtual_wake(self):
+        self.sleep_all();self.c.screen(False)
+        mutations=[a[2] for a in self.fake.calls if a[1]=='eval']
+        self.assertIn('disabled=true',mutations[0]);self.assertIn('dpms(',mutations[-1])
+        self.assertTrue(self.virtual()['dpmsStatus'])
+    def test_disconnect_idle_rearms_local_input_wake(self):
+        self.sleep_all();self.c.screen(False);self.c.screen(True)
+        self.assertTrue(self.fake.input_wake_armed)
+        self.fake.user_input();self.assertTrue(self.panel()['dpmsStatus'])
+    def test_forced_visible_stream_follows_normal_idle(self):
+        self.c.set_override(True);self.sleep_all();self.c.screen(True)
+        self.assertFalse(self.panel()['dpmsStatus']);self.assertFalse(self.virtual()['dpmsStatus'])
+        self.assertTrue(self.fake.input_wake_armed)
+    def test_remembered_power_does_not_cross_sessions(self):
+        self.c.remember_power(False);self.c.session='new-session'
+        self.assertIsNone(self.c.remembered_power());self.c.screen(True)
+        self.assertTrue(self.panel()['dpmsStatus'])
+    def test_watcher_startup_asleep_without_virtual_does_not_wake(self):
+        self.fake.outputs=self.fake.outputs[:1];self.panel()['mirrorOf']='none';self.panel()['dpmsStatus']=False
+        class StoppedTracker:
+            def __init__(self,*_):self.invocation=None;self.saw_stopped=True
+            def poll(self):return 0
+        with patch.object(p,'Connections',StoppedTracker),patch.object(p.signal,'signal'),patch.object(p,'notify_ready'),patch.object(p.time,'sleep',side_effect=KeyboardInterrupt),contextlib.redirect_stdout(io.StringIO()):
+            p.watch(self.c)
+        self.assertFalse(self.panel()['dpmsStatus'])
+        self.assertFalse(any(a[1]=='eval' for a in self.fake.calls))
 
 
 class FakeJournal:

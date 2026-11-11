@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Omarchy Screen Privacy 0.1.2. See README.md for the limited support contract."""
+"""Omarchy Screen Privacy 0.1.3. See README.md for the limited support contract."""
 import argparse
 import contextlib
 import fcntl
@@ -15,7 +15,7 @@ import time
 import uuid
 
 NAME = 'omarchy-screen-privacy'
-VERSION = '0.1.2'
+VERSION = '0.1.3'
 UNIT = NAME + '.service'
 VIRTUAL = 'HEADLESS-9'
 ICON = '\U000f0d90'
@@ -90,6 +90,7 @@ class Controller:
         self.marker = self.runtime / (NAME + '.off')
         self.override_path = self.runtime / (NAME + '.override.json')
         self.test_token = self.runtime / (NAME + '.test-token')
+        self.restore_power_path = self.runtime / (NAME + '.restore-power.json')
         self.session = os.environ.get('HYPRLAND_INSTANCE_SIGNATURE', '')
 
     def outputs(self):
@@ -128,7 +129,9 @@ class Controller:
 
     def setup(self):
         current = self.outputs()
-        self.topology(current)
+        physical, virtual = self.topology(current)
+        if (not physical.get('disabled') and not physical.get('dpmsStatus', True)) or (physical.get('disabled') and virtual and not virtual.get('dpmsStatus', True)):
+            self.remember_power(False)
         if self.virtual not in {m['name'] for m in current}:
             self.run(['hyprctl', 'output', 'create', 'headless', self.virtual])
             for _ in range(30):
@@ -145,24 +148,90 @@ class Controller:
         p, _ = self.topology(self.outputs())
         return bool(p.get('disabled') or not p.get('dpmsStatus', True))
 
-    def screen(self, visible):
-        p, virtual = self.topology(self.outputs(), require_virtual=not visible)
-        if visible:
-            self.marker.unlink(missing_ok=True)
-            mirrored = virtual and str(p.get('mirrorOf')) in (self.virtual, str(virtual.get('id')))
-            if p.get('disabled') or (virtual and not mirrored):
-                self.lua(self.physical_rule(mirror=bool(virtual)))
-            if not p.get('dpmsStatus', True):
-                self.lua('hl.dispatch(hl.dsp.dpms({action="enable"}))')
-        else:
-            atomic(self.marker, self.session)
-            if not p.get('disabled'):
-                self.lua(self.physical_rule(visible=False))
+    def hidden(self):
+        physical, _ = self.topology(self.outputs())
+        return bool(physical.get('disabled'))
+
+    def power(self, output, enabled):
+        # Mirrored outputs are omitted from Hyprland's dispatcher query. An
+        # unresolved selector silently means ALL outputs, so check eligibility.
+        outputs = json.loads(self.run(['hyprctl', 'monitors', '-j']).stdout)
+        if output not in {m['name'] for m in outputs if not m.get('disabled') and str(m.get('mirrorOf', 'none')) in ('none', '', '-1', 'None')}:
+            raise RuntimeError('Output is not eligible for targeted DPMS: ' + output)
+        action = 'enable' if enabled else 'disable'
+        self.lua('hl.dispatch(hl.dsp.dpms({action=' + json.dumps(action) + ',monitor=' + json.dumps(output) + '}))')
         for _ in range(50):
-            if self.off() != visible:
+            current = next((m for m in self.outputs() if m['name'] == output and not m.get('disabled')), None)
+            if current and current.get('dpmsStatus', True) == enabled:
                 return
             self.sleep(.1)
-        raise RuntimeError('Display state did not settle. Use the documented recovery command.')
+        raise RuntimeError('Display power did not settle for ' + output)
+
+    def remember_power(self, enabled):
+        atomic(self.restore_power_path, json.dumps(dict(session=self.session, enabled=bool(enabled))))
+
+    def remembered_power(self):
+        try:
+            data = json.loads(self.restore_power_path.read_text())
+            return data['enabled'] if data.get('session') == self.session else None
+        except (FileNotFoundError, ValueError, KeyError):
+            return None
+
+    def power_all(self, enabled):
+        # Explicitly global, only in the validated single-panel/virtual layout.
+        self.topology(self.outputs())
+        action = 'enable' if enabled else 'disable'
+        self.lua('hl.dispatch(hl.dsp.dpms({action=' + json.dumps(action) + '}))')
+        for _ in range(50):
+            if all(m.get('disabled') or m.get('dpmsStatus', True) == enabled for m in self.outputs()):
+                return
+            self.sleep(.1)
+        raise RuntimeError('Display power did not settle.')
+
+    def keep_virtual_awake(self):
+        physical, virtual = self.topology(self.outputs())
+        # Visible mode belongs to Omarchy's idle/input policy. Waking just the
+        # virtual output there would disarm Hyprland's global input-wake flag.
+        if not physical.get('disabled') or not virtual or virtual.get('dpmsStatus', True):
+            return
+        self.remember_power(False)
+        self.power(self.virtual, True)
+
+    def screen(self, visible, wake=False):
+        physical, virtual = self.topology(self.outputs(), require_virtual=not visible)
+        preserve_idle = (not physical.get('disabled') and not physical.get('dpmsStatus', True)) or self.remembered_power() is False
+        if physical.get('disabled') and virtual and not virtual.get('dpmsStatus', True):
+            # The final disconnect can coincide with idle before the next hidden poll.
+            preserve_idle = True
+        changed_layout = False
+        if visible:
+            self.marker.unlink(missing_ok=True)
+            mirrored = virtual and str(physical.get('mirrorOf')) in (self.virtual, str(virtual.get('id')))
+            if physical.get('disabled') or (virtual and not mirrored):
+                self.lua(self.physical_rule(mirror=bool(virtual)))
+                changed_layout = True
+        else:
+            if not physical.get('disabled'):
+                self.remember_power(physical.get('dpmsStatus', True))
+            atomic(self.marker, self.session)
+            if not physical.get('disabled'):
+                self.lua(self.physical_rule(visible=False))
+        # Visibility and power are independent. DPMS-off is valid while visible.
+        for _ in range(50):
+            if self.hidden() != visible:
+                break
+            self.sleep(.1)
+        else:
+            raise RuntimeError('Display visibility did not settle. Use the documented recovery command.')
+        if visible:
+            if wake:
+                self.power_all(True)
+            elif preserve_idle:
+                physical, _ = self.topology(self.outputs())
+                if changed_layout or self.remembered_power() is False or physical.get('dpmsStatus', True):
+                    self.power_all(False)
+            self.restore_power_path.unlink(missing_ok=True)
+        self.keep_virtual_awake()
 
     def set_override(self, value):
         if value is None:
@@ -207,8 +276,24 @@ class Controller:
         # Independent of current topology validation; targets only the configured panel.
         self.marker.unlink(missing_ok=True)
         virtual = any(m['name'] == self.virtual and not m.get('disabled') for m in self.outputs())
-        self.lua(self.physical_rule(mirror=virtual))
-        self.lua('hl.dispatch(hl.dsp.dpms({action="enable"}))')
+        # A mirrored physical output cannot be safely targeted by DPMS. In the
+        # expected layout use explicit global wake. On hotplug, unmirror first
+        # so emergency recovery affects only the configured physical output.
+        expected = {self.p['name'], self.virtual}
+        normal = not ({m['name'] for m in self.outputs()} - expected)
+        self.lua(self.physical_rule(mirror=virtual and normal))
+        for _ in range(50):
+            physical = next((m for m in self.outputs() if m['name'] == self.p['name'] and not m.get('disabled')), None)
+            if physical:
+                break
+            self.sleep(.1)
+        else:
+            raise RuntimeError('Physical display did not return during recovery.')
+        if normal:
+            self.power_all(True)
+        else:
+            self.power(self.p['name'], True)
+        self.restore_power_path.unlink(missing_ok=True)
         self.set_override(True)
 
 
@@ -301,7 +386,7 @@ def watch(controller):
                     if visible is None:
                         visible = count == 0
                     # No headless is expected before Sunshine ExecStartPre creates it.
-                    if tracker.invocation is not None or controller.off():
+                    if tracker.invocation is not None or controller.hidden():
                         controller.screen(visible)
                 if state != previous:
                     print(f'Observed clients={count}; physical screen {"off" if controller.off() else "on"}', flush=True)
@@ -411,7 +496,7 @@ def main(argv=None):
                 ctl.set_override(None)
             else:
                 visible = action == 'toggle' and ctl.off()
-                ctl.screen(visible)
+                ctl.screen(visible, wake=visible)
                 ctl.set_override(visible)
 
 
